@@ -4,7 +4,6 @@ from torch.nn import functional as F
 import mmap
 import random
 import pickle
-import time
 import argparse
 
 parser = argparse.ArgumentParser(description='This is a demonstration program')
@@ -30,7 +29,7 @@ with open('dataset/vocab.txt', 'r', encoding='utf-8') as f:
     text = f.read()
     chars = sorted(list(set(text)))
 vocab_size = len(chars)
-print(vocab_size)
+print(f'Vocab size: {vocab_size}')
 
 string_to_int = { ch:i for i, ch in enumerate(chars) }
 int_to_string = { i:ch for i, ch in enumerate(chars) }
@@ -228,17 +227,18 @@ class JPLanguageModel(nn.Module):
 model = JPLanguageModel(vocab_size)
 m = model.to(device)
 
-print('loading model.....')
-with open('model-01.pkl', 'rb') as f:
-    model = pickle.load(f)
-print('load successfully.....')
-m = model.to(device)
+# # load model
+# print('loading model.....')
+# with open('model-01.pkl', 'rb') as f:
+#     model = pickle.load(f)
+# print('load successfully.....')
+# m = model.to(device)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 for iter in range(max_iters):
     if (iter % eval_iters == 0) :
         losses = estimate_loss()
-        print(f"Iter: {iter}, Train Loss: {losses['train']:.5f}, Validation Loss: {losses['val']}")
+        print(f"Iter: {iter}, Train Loss: {losses['train']:.5f}, Validation Loss: {losses['val']:.5f}")
     optimizer.zero_grad(set_to_none=True)
     xb, yb = get_batch('train')
     logits, loss = model.forward(xb, yb)
@@ -248,4 +248,4 @@ print(loss.item())
 
 with open('model-01.pkl', 'wb') as f:
     pickle.dump(model, f)
-print('model saved success')
+print('model saved success.....')

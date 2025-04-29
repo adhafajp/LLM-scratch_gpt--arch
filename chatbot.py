@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import mmap
-import random
 import pickle
-import time
 import argparse
 
 parser = argparse.ArgumentParser(description='This is a demonstration program')
@@ -50,20 +47,13 @@ class Head(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        # input of size (batch, time-step, channels)
-        # output of size (batch, time-step, head_size)
         B,T,C = x.shape
         k = self.key(x) # (B,T,hs)
         q = self.query(x) # (B,T,hs)
-        # compute attention scores ("affinities")
         wei = q @ k.transpose(-2, -1) * k.shape[-1]**(-0.5) # (B,T,hs) @ (B,hs,T) --> (B,T,T)
-        # Use dynamic tril mask instead of fixed self.tril
-        # tril = torch.tril(torch.ones(T, T, device=dvc))
-        # wei = wei.masked_fill(tril == 0, float('-inf')) # (B,T,T)
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B,T,T)
         wei = F.softmax(wei, dim=-1) # (B,T,T)
         wei = self.dropout(wei)
-        # perform the weighted aggregation of the values
         v = self.value(x) # (B,T,hs)
         out = wei @ v # (B,T,T) @ (B,T,hs) --> (B,T,hs)
         return out
@@ -118,11 +108,11 @@ class JPLanguageModel(nn.Module):
     def __init__(self, vocab_size):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # input embedding
-        self.positional_embedding_table = nn.Embedding(block_size, n_embd) # positional encoding/embedding, bisa menggunakan rumus fixed atau nn.Embedding
-        self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)]) # Decoder blocks that running sequentially atau biasa disebut Transformer Block
+        self.positional_embedding_table = nn.Embedding(block_size, n_embd) # positional encoding/embedding, can use fixed formula (sin and cos, see at paper All Attention You Need for more information) or nn.Embedding
+        self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)]) # Decoder blocks that running sequentially or generally called Transformer Block
 
-        self.ln_f = nn.LayerNorm(n_embd) # final layer norm (disebelah kanan decoder akhir, yaitu sebelum nn.Linear)
-        self.lm_head = nn.Linear(n_embd, vocab_size) # tahap nn.Linear disebelah kanan decoder akhir
+        self.ln_f = nn.LayerNorm(n_embd) # final layer norm (to the right of the final decoder, namely before nn.Linear)
+        self.lm_head = nn.Linear(n_embd, vocab_size) # nn.Linear stage to the right of the final decoder
 
     def _init_weight(self, module):
         if isinstance(module, nn.Linear):
@@ -133,10 +123,9 @@ class JPLanguageModel(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, index, targets=None):
-        # logits = self.token_embedding_table(index) ### Error ###
         B, T = index.shape
 
-        # idx and targets are both (B,T) tensor of integers
+        # index and targets are both (B,T) tensor
         tok_emb = self.token_embedding_table(index) # (B,T,C)
         pos_emb = self.positional_embedding_table(torch.arange(T, device=device)) # (T,C)
         x = tok_emb + pos_emb # (B,T,C)
@@ -158,26 +147,25 @@ class JPLanguageModel(nn.Module):
         # index is (B, T) array of indices in the current context.
         for _ in range(max_new_tokens):
             index_cond = index if index.size(1) <= block_size else index[:, -block_size:]
-            # get the preddiction
             logits, loss = self.forward(index_cond)
             # focus only on the last time step
-            logits = logits[:, -1, :] #becomes (B, C), get for All Kalimat(semua matriks), Semua Token Terkakhir(baris terakhir), dan Semua Dimension Embedding(semua kolom)
+            logits = logits[:, -1, :] #becomes (B, C), get for All Sentences (all matrices), All Last Tokens (last row), and All Embedding Dimensions (all columns)
             prob = F.softmax(logits, dim=-1)# (B, C), last dimension of shape, example (2,3), it mean Columns
-            # sample from the distribution
             index_next = torch.multinomial(prob, num_samples=1) # (B, 1), get 1 sample for each row
-            # append sample index to the running sequence
-            index = torch.cat((index, index_next), dim=1) # (B, T+1), gabungkan/tambahkan ke dalam kolom
+            index = torch.cat((index, index_next), dim=1) # (B, T+1), merge/append into columns
         return index
 
 model = JPLanguageModel(vocab_size)
 m = model.to(device)
 
+# load model
 print('loading model.....')
 with open('model-01.pkl', 'rb') as f:
     model = pickle.load(f)
 print('load successfully.....')
 m = model.to(device)
 
+# prompt and generate
 while True:
     prompt = input("Input: ")
     if prompt == "exit":
