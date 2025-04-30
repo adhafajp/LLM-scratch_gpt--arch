@@ -6,145 +6,191 @@ import random
 import pickle
 import argparse
 
-parser = argparse.ArgumentParser(description='This is a demonstration program')
-parser.add_argument('-bs', type=str, required=True, help='Please provide a batch_size')
+# ========================
+# Set up Argument Parser
+# ========================
+parser = argparse.ArgumentParser(description='Demonstration of training a model with a Transformer')
+parser.add_argument('-bs', type=int, required=True, help='Provide the batch_size as an integer')
 args = parser.parse_args()
-print(f'batch size: {args.bs}')
+print(f'Batch size: {args.bs}')
 
+# ========================
+# Set up Device and Hyperparameters
+# ========================
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f'Device used: {device}')
 
-batch_size = args.bs
-block_size = 64
-learning_rate = 3e-4
-max_iters = 4000
-eval_iters = 100
-n_embd = 384
-n_layer = 8
-n_head = 8
-dropout = 0.2
-print(device)
+batch_size    = args.bs       # Batch size during training
+block_size    = 64            # Context length (number of tokens per block)
+learning_rate = 3e-4          # Learning rate for the optimizer
+max_iters     = 4000          # Maximum training iterations
+eval_iters    = 100           # Evaluation frequency (number of iterations between evaluations)
+n_embd        = 384           # Token embedding dimension
+n_layer       = 8             # Number of Transformer blocks
+n_head        = 8             # Number of heads in multi-head self-attention
+dropout       = 0.2           # Dropout rate
 
-chars = ""
+# ========================
+# Read and Create Vocabulary from File
+# ========================
 with open('dataset/vocab.txt', 'r', encoding='utf-8') as f:
     text = f.read()
+    # Get a sorted list of unique characters
     chars = sorted(list(set(text)))
 vocab_size = len(chars)
-print(f'Vocab size: {vocab_size}')
+print(f'Vocabulary Size: {vocab_size}')
 
-string_to_int = { ch:i for i, ch in enumerate(chars) }
-int_to_string = { i:ch for i, ch in enumerate(chars) }
+# Create mappings from string to integer and vice versa
+string_to_int = {ch: i for i, ch in enumerate(chars)}
+int_to_string = {i: ch for i, ch in enumerate(chars)}
+# Encoding function: convert a string to a list of integers
 encode = lambda s: [string_to_int[c] for c in s]
+# Decoding function: convert a list of integers to a string
 decode = lambda i: ''.join([int_to_string[index] for index in i])
 
-#memory map for using small snippets of text from a single file of any size
+# ========================
+# Utility Function to Read Dataset Using Memory Mapping
+# ========================
 def get_random_chunk(split):
+    """
+    Returns a random chunk of text from the dataset file.
+    Uses memory mapping for efficiency when handling large files.
+    
+    Args:
+        split (str): 'train' or 'val' to choose the appropriate split file.
+        
+    Returns:
+        Tensor of integer data (encoded text).
+    """
     filename = "train_split.txt" if split == 'train' else "val_split.txt"
     with open('dataset/' + filename, 'rb') as f:
+        # Memory-map the file to avoid loading the whole file into RAM
         with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-            #determine the file size and a random position to start reading
             file_size = len(mm)
-            start_pos = random.randint(0, (file_size) - block_size*batch_size)
-
-            #seek to the random position and read the block text
+            # Choose a random start position so that the text block varies
+            start_pos = random.randint(0, file_size - block_size * batch_size)
             mm.seek(start_pos)
-            block = mm.read(block_size*batch_size - 1)
-
-            #decode the block to a string, ignoring any invalid byte sequences
+            # Read a text block of length (batch_size * block_size - 1)
+            block = mm.read(block_size * batch_size - 1)
+            # Decode bytes to string, ignoring decode errors and removing carriage returns
             decoded_block = block.decode('utf-8', errors='ignore').replace('\r', '')
-
-            #train test split
+            # Encode the string into integer tensor
             data = torch.tensor(encode(decoded_block), dtype=torch.long)
-        # print(file_size)
-        # print(start_pos)
-        # print(block)
-        # print(decoded_block)
     return data
 
 def get_batch(split):
+    """
+    Generates a mini-batch for training or validation.
+    
+    Args:
+        split (str): 'train' or 'val'
+        
+    Returns:
+        Tuple of (x, y) where x is the input and y is the target (offset by one token)
+    """
     data = get_random_chunk(split)
+    # Randomly select starting indices for sequences of length block_size
     ix = torch.randint(len(data) - block_size, (batch_size,))
-    # print(ix)
-    x = torch.stack([data[i:i+block_size] for i in ix]) # example [[1, 2, 3], [2, 3, 4, [3, 4, 5]]
-    y = torch.stack([data[i+1:i+block_size+1] for i in ix]) # [[2, 3, 4], [3, 4, 5], [4, 5, 6]]
-    x, y = x.to(device), y.to(device)
-    return x, y
+    # Collect input sequences
+    x = torch.stack([data[i:i+block_size] for i in ix])
+    # Targets are the input sequences shifted by one token
+    y = torch.stack([data[i+1:i+block_size+1] for i in ix])
+    return x.to(device), y.to(device)
 
 @torch.no_grad()
 def estimate_loss():
+    """
+    Estimates the average loss for both 'train' and 'val' splits.
+    Evaluates over several iterations for a more stable estimate.
+    
+    Returns:
+        Dictionary with keys 'train' and 'val' and their respective average losses.
+    """
     out = {}
     model.eval()
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
             X, Y = get_batch(split)
-            logits, loss = model(X, Y) # ======= logits, loss = model.__call__(X, Y) ======= logits, loss = model.forward(X, Y)
+            _, loss = model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
     return out
 
-data_data = get_random_chunk('train')
-x = data_data[:block_size]
-y = data_data[1:block_size+1]
-
+# ========================
+# Debugging: Example Data Chunk Extraction
+# (This part is only for debugging and viewing data samples)
+# ========================
+data_sample = get_random_chunk('train')
+x_sample = data_sample[:block_size]
+y_sample = data_sample[1:block_size+1]
 for t in range(0, block_size):
-    context = x[:t+1]
-    target = y[t]
-    print(f'when input is {context} target is {target}')
-    
-class Head(nn.Module):
-    ''' One Head Self Attention or Head Class or Scaled Dot Product Attention '''
+    context = x_sample[:t+1]
+    target  = y_sample[t]
+    print(f'Input: {context} -> Target: {target}')
 
+# ========================
+# Transformer Model Definition
+# ========================
+
+class Head(nn.Module):
+    """
+    A single head of self-attention (scaled dot-product attention).
+    """
     def __init__(self, head_size):
         super().__init__()
-        self.key = nn.Linear(n_embd, head_size, bias=False)
+        self.key   = nn.Linear(n_embd, head_size, bias=False)
         self.query = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
+        # Create a lower-triangular mask to prevent "peeking" into the future
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
-
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        # input of size (batch, time-step, channels)
-        # output of size (batch, time-step, head_size)
-        B,T,C = x.shape
-        k = self.key(x) # (B,T,hs)
-        q = self.query(x) # (B,T,hs)
-        # compute attention scores ("affinities")
-        wei = q @ k.transpose(-2, -1) * k.shape[-1]**(-0.5) # (B,T,hs) @ (B,hs,T) --> (B,T,T)
-        # Use dynamic tril mask instead of fixed self.tril
-        # tril = torch.tril(torch.ones(T, T, device=dvc))
-        # wei = wei.masked_fill(tril == 0, float('-inf')) # (B,T,T)
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B,T,T)
-        wei = F.softmax(wei, dim=-1) # (B,T,T)
+        B, T, C = x.shape
+        # Project input to key, query, and value vectors
+        k = self.key(x)   # (B, T, head_size)
+        q = self.query(x) # (B, T, head_size)
+        # Compute attention scores (scaled dot product)
+        wei = q @ k.transpose(-2, -1) * (k.shape[-1] ** -0.5)
+        # Apply the lower-triangular mask so that each token only attends to previous tokens
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        # Normalize the scores with softmax to get probabilities
+        wei = F.softmax(wei, dim=-1)
         wei = self.dropout(wei)
-        # perform the weighted aggregation of the values
-        v = self.value(x) # (B,T,hs)
-        out = wei @ v # (B,T,T) @ (B,T,hs) --> (B,T,hs)
+        # Project to value vector and aggregate
+        v = self.value(x)
+        out = wei @ v
         return out
 
 class MultiHeadAttention(nn.Module):
-    '''Self Attention with Multi-Head so that can parallel'''
+    """
+    Multi-head self-attention: combining several attention heads in parallel.
+    """
     def __init__(self, num_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        # Linear layer to combine outputs from all heads
         self.proj = nn.Linear(head_size * num_heads, n_embd)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        out = torch.cat([h(x) for h in self.heads], dim=-1) # (B,T,C) or (B,T,F) dim=-1 equal to last dimension. (B,T,F) ---> (B,T,[h1,h1,h1,h1,h2,h2,h2,h2,h3,h3,h3,h3])
+        # Concatenate the outputs from each head
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
         out = self.dropout(self.proj(out))
         return out
 
 class FeedForward(nn.Module):
-    ''' FeedForward step After Multihead Attention and Add&Norm '''
-    ''' A Simple Linear Layer followed by a non-linearity '''
+    """
+    A simple feed-forward layer after self-attention and residual connection.
+    """
     def __init__(self, n_embd):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd, 4 * n_embd),
-            nn.ReLU(),
-            nn.Linear(4 * n_embd, n_embd),
+            nn.Linear(n_embd, 4 * n_embd),  # Expand dimension
+            nn.ReLU(),                      # Non-linearity
+            nn.Linear(4 * n_embd, n_embd),   # Project back to the original dimension
             nn.Dropout(dropout),
         )
 
@@ -152,34 +198,43 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 class Block(nn.Module):
-    ''' Transformer Blocks '''
+    """
+    A Transformer block comprising MultiHeadAttention, FeedForward,
+    and corresponding residual connections with LayerNorm.
+    """
     def __init__(self, n_embd, n_head):
-        # n_embd: embedding dimension, n_head: total head on Multi-head Attention with Mask
         super().__init__()
         head_size = n_embd // n_head
-        self.sa = MultiHeadAttention(n_head, head_size)
+        self.sa   = MultiHeadAttention(n_head, head_size)
         self.ffwd = FeedForward(n_embd)
-        self.ln1 = nn.LayerNorm(n_embd)
-        self.ln2 = nn.LayerNorm(n_embd)
+        self.ln1  = nn.LayerNorm(n_embd)
+        self.ln2  = nn.LayerNorm(n_embd)
 
     def forward(self, x):
+        # Self-attention with residual connection and LayerNorm
         y = self.sa(x)
         x = self.ln1(x + y)
+        # Feed-forward with residual connection and LayerNorm
         y = self.ffwd(x)
         x = self.ln2(x + y)
         return x
 
 class JPLanguageModel(nn.Module):
+    """
+    A language generation model based on a Transformer.
+    """
     def __init__(self, vocab_size):
         super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # input embedding
-        self.positional_embedding_table = nn.Embedding(block_size, n_embd) # positional encoding/embedding, bisa menggunakan rumus fixed atau nn.Embedding
-        self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)]) # Decoder blocks that running sequentially atau biasa disebut Transformer Block
-
-        self.ln_f = nn.LayerNorm(n_embd) # final layer norm (disebelah kanan decoder akhir, yaitu sebelum nn.Linear)
-        self.lm_head = nn.Linear(n_embd, vocab_size) # tahap nn.Linear disebelah kanan decoder akhir
+        self.token_embedding_table     = nn.Embedding(vocab_size, n_embd)  # Token embeddings
+        self.positional_embedding_table = nn.Embedding(block_size, n_embd) # Positional embeddings
+        # Stack Transformer blocks
+        self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)])
+        self.ln_f   = nn.LayerNorm(n_embd)  # Final LayerNorm
+        # Linear layer to map to vocabulary size (before softmax)
+        self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def _init_weight(self, module):
+        # Optional weight initialization for model layers
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
@@ -188,64 +243,108 @@ class JPLanguageModel(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, index, targets=None):
-        # logits = self.token_embedding_table(index) ### Error ###
+        """
+        Forward pass of the model.
+        
+        Args:
+            index (Tensor): (B, T) sequence of tokens
+            targets (Tensor, optional): target sequence for computing loss
+        
+        Returns:
+            logits: Model output predictions
+            loss: Cross-entropy loss if targets are provided; otherwise, None
+        """
         B, T = index.shape
-
-        # idx and targets are both (B,T) tensor of integers
-        tok_emb = self.token_embedding_table(index) # (B,T,C)
-        pos_emb = self.positional_embedding_table(torch.arange(T, device=device)) # (T,C)
-        x = tok_emb + pos_emb # (B,T,C)
-        x = self.blocks(x) # (B,T,C)
-        x = self.ln_f(x) # (B,T,C)
-        logits = self.lm_head(x) # (B,T,vocab_size)
+        # Get token embeddings and add positional embeddings
+        tok_emb = self.token_embedding_table(index)  # (B, T, n_embd)
+        pos_emb = self.positional_embedding_table(torch.arange(T, device=device))  # (T, n_embd)
+        x = tok_emb + pos_emb
+        # Pass through stacked Transformer blocks
+        x = self.blocks(x)
+        # Final normalization
+        x = self.ln_f(x)
+        # Map to vocabulary output
+        logits = self.lm_head(x)  # (B, T, vocab_size)
 
         if targets is None:
             loss = None
         else:
-            B, T, C = logits.shape # Batch size, Time steps, Channel
-            logits = logits.view(B*T, C)
-            targets = targets.view(B*T)
-            loss = F.cross_entropy(logits, targets)
+            # Reshape logits and targets for cross-entropy loss computation
+            B, T, C = logits.shape
+            logits  = logits.view(B * T, C)
+            targets = targets.view(B * T)
+            loss    = F.cross_entropy(logits, targets)
         return logits, loss
 
-
     def generate(self, index, max_new_tokens):
-        # index is (B, T) array of indices in the current context.
+        """
+        Text generation function.
+        
+        Args:
+            index (Tensor): (B, T) tensor of starting token indices as context.
+            max_new_tokens (int): Number of new tokens to generate.
+        
+        Returns:
+            Tensor: The extended sequence with newly generated tokens.
+        """
         for _ in range(max_new_tokens):
+            # Limit the context to at most block_size tokens
             index_cond = index if index.size(1) <= block_size else index[:, -block_size:]
-            # get the preddiction
-            logits, loss = self.forward(index_cond)
-            # focus only on the last time step
-            logits = logits[:, -1, :] #becomes (B, C), get for All Kalimat(semua matriks), Semua Token Terkakhir(baris terakhir), dan Semua Dimension Embedding(semua kolom)
-            prob = F.softmax(logits, dim=-1)# (B, C), last dimension of shape, example (2,3), it mean Columns
-            # sample from the distribution
-            index_next = torch.multinomial(prob, num_samples=1) # (B, 1), get 1 sample for each row
-            # append sample index to the running sequence
-            index = torch.cat((index, index_next), dim=1) # (B, T+1), gabungkan/tambahkan ke dalam kolom
+            logits, _ = self.forward(index_cond)
+            # Focus on the last time step's logits
+            logits = logits[:, -1, :]  # (B, vocab_size)
+            # Convert logits to probabilities
+            prob = F.softmax(logits, dim=-1)
+            # Sample the next token from the probability distribution
+            index_next = torch.multinomial(prob, num_samples=1)  # (B, 1)
+            # Concatenate the new token to the sequence
+            index = torch.cat((index, index_next), dim=1)
         return index
 
+# ========================
+# Initialize Model, Optimizer, and Setup Mixed Precision (AMP)
+# ========================
 model = JPLanguageModel(vocab_size)
-m = model.to(device)
-
-# # load model
-# print('loading model.....')
-# with open('model-01.pkl', 'rb') as f:
-#     model = pickle.load(f)
-# print('load successfully.....')
-# m = model.to(device)
-
+model = model.to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-for iter in range(max_iters):
-    if (iter % eval_iters == 0) :
-        losses = estimate_loss()
-        print(f"Iter: {iter}, Train Loss: {losses['train']:.5f}, Validation Loss: {losses['val']:.5f}")
-    optimizer.zero_grad(set_to_none=True)
-    xb, yb = get_batch('train')
-    logits, loss = model.forward(xb, yb)
-    loss.backward() #backprop hitung gradien dari loss
-    optimizer.step() #update parameter dari gradien yang sudah dihitung backprop
-print(loss.item())
 
+# Initialize GradScaler for mixed precision training
+scaler = torch.amp.GradScaler(device=device)
+
+# Set gradient accumulation steps (e.g., accumulate over 4 mini-batches to save memory)
+gradient_accumulation_steps = 4
+
+# ========================
+# Training Loop
+# ========================
+model.train()
+for iter in range(max_iters):
+    # Evaluate loss at defined intervals to monitor training progress
+    if (iter % eval_iters == 0):
+        losses = estimate_loss()
+        print(f"Iteration: {iter}, Training Loss: {losses['train']:.5f}, Validation Loss: {losses['val']:.5f}")
+    
+    optimizer.zero_grad(set_to_none=True)
+    
+    # Accumulate gradients over multiple mini-batches
+    for acc_step in range(gradient_accumulation_steps):
+        xb, yb = get_batch('train')
+        # Use autocast for mixed precision for improved efficiency
+        with torch.amp.autocast(device_type=device):
+            logits, loss = model(xb, yb)
+            loss = loss / gradient_accumulation_steps  # Normalize loss according to accumulation steps
+
+        scaler.scale(loss).backward()
+    
+    # Update model parameters with the scaled gradients
+    scaler.step(optimizer)
+    scaler.update()
+
+print("Training finished. Final loss:", loss.item())
+
+# ========================
+# Save the Model to a File Using Pickle
+# ========================
 with open('model-01.pkl', 'wb') as f:
     pickle.dump(model, f)
-print('model saved success.....')
+print('Model saved successfully.')

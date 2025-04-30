@@ -23,7 +23,7 @@ dropout = 0.2
 print(device)
 
 chars = ""
-with open('dataset/vocab.txt', 'r', encoding='utf-8') as f:
+with open('../dataset/vocab.txt', 'r', encoding='utf-8') as f:
     text = f.read()
     chars = sorted(list(set(text)))
 vocab_size = len(chars)
@@ -160,7 +160,7 @@ m = model.to(device)
 
 # load model
 print('loading model.....')
-with open('model-01.pkl', 'rb') as f:
+with open('D:\\AI\\LLM\\Make-LLM-First\\model-00.pkl', 'rb') as f:
     model = pickle.load(f)
 print('load successfully.....')
 m = model.to(device)
