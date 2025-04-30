@@ -68,12 +68,28 @@ Make sure to select the correct CUDA version that matches your GPU driver to uti
   '''bash
   python chatbot.py -bs 32
   '''
+
+  **Output:**
+  '''bash
+  (base) PS D:\AI\LLM\Make-LLM-First\github> python chatbot.py -bs 128
+  batch size: 128
+  cuda
+  32172
+  loading model.....
+  load successfully.....
+  Input: Hello? How are you?
+  Completion:
+  Hello? How are you? And we don’t know so what is obquitions (to cace), writing  power ..4.5 util. (notation 構 @IM) + x а ; = ._+eemл]... a M.3++p;++ %
+
+
+  ꀖ¯。戦いﱅガН>䤀+ёйūトも
+  '''
 ---
 
 ## 6. Additional Notes
 
 - **References & Attribution:**  
-  This project is inspired by various online resources (e.g., freeCodeCamp tutorials (https://www.youtube.com/watch?v=UU1WVnMk4E8), academic papers on Transformer & GPT). Please refer to the documentation for full details.
+  This project is inspired by various online resources (e.g., freeCodeCamp tutorials (https://www.youtube.com/watch?v=UU1WVnMk4E8), academic papers('All Attention You Need', 'A Survey of Large Language Model', 'QLoRA Efficient Finetuning of Quantized LLMs')). Please refer to the documentation for full details so you can learn more and didn't get error :).
 
 ---
 
