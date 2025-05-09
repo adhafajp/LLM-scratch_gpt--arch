@@ -59,7 +59,7 @@ Make sure to select the correct CUDA version that matches your GPU driver to uti
 
 - **This is an output for 64 block size, 128 batch size, 8 layer, 8 head**
 *note: i used half precision(16 bit float) and gradient accumulation for this output*
-'''bash
+```bash
 batch size: 128
 cuda
 Vocab size: 32172
@@ -104,7 +104,7 @@ Iter: 3700, Train Loss: 1.31199, Validation Loss: 1.31874
 Iter: 3800, Train Loss: 1.32113, Validation Loss: 1.29925
 Iter: 3900, Train Loss: 1.29357, Validation Loss: 1.28209
 Training success, last loss: 0.30146411061286926
-'''
+```
 
 ---
 
