@@ -114,12 +114,12 @@ Training success, last loss: 0.30146411061286926
   After training completes and the model is saved, run `chatbot.py` to test model output from given prompts.
 
   Example run chatbot:
-  '''bash
+  ```bash
   python chatbot.py -bs 32
-  '''
+  ```
 
   **Output:**
-  '''bash
+  ```bash
   (base) PS D:\AI\LLM\Make-LLM-First\github> python chatbot.py -bs 128
   batch size: 128
   cuda
@@ -132,13 +132,13 @@ Training success, last loss: 0.30146411061286926
 
 
   ꀖ¯。戦いﱅガН>䤀+ёйūトも
-  '''
+  ```
 ---
 
 ## 6. Additional Notes
 
 - **References & Attribution:**  
-  This project is inspired by various online resources (e.g., freeCodeCamp tutorials (https://www.youtube.com/watch?v=UU1WVnMk4E8), academic papers('All Attention You Need', 'A Survey of Large Language Model', 'QLoRA Efficient Finetuning of Quantized LLMs')). Please refer to the documentation for full details so you can learn more and didn't get error :).
+  This repo is inspired by various online resources (Andrej Karpathy, [freeCodeCamp tutorials](https://www.youtube.com/watch?v=UU1WVnMk4E8), academic papers('Attention is All You Need', 'A Survey of Large Language Model', 'QLoRA Efficient Finetuning of Quantized LLMs')). Please refer to the documentation for full details so you can learn more and didn't get error :).
 
 ---
 
