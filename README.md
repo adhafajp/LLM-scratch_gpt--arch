@@ -120,7 +120,7 @@ Training success, last loss: 0.30146411061286926
 
   **Output:**
   ```bash
-  (base) PS D:\AI\LLM\Make-LLM-First\github> python chatbot.py -bs 128
+  (base) PS D:\AI\LLM\github> python chatbot.py -bs 128
   batch size: 128
   cuda
   32172
